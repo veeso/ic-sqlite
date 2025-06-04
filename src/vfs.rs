@@ -1,10 +1,10 @@
+use ic_cdk::stable::{stable_read, stable_size, stable_write};
 use std::io::{self, ErrorKind};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use ic_cdk::api::stable::{stable64_read, stable64_size, stable64_write};
 
-use sqlite_vfs::{LockKind, OpenKind, OpenOptions, Vfs};
 use crate::{stable_capacity, stable_grow_bytes};
+use sqlite_vfs::{LockKind, OpenKind, OpenOptions, Vfs};
 
 const SQLITE_SIZE_IN_BYTES: u64 = 8; // 8 byte
 
@@ -81,8 +81,8 @@ impl sqlite_vfs::DatabaseHandle for Connection {
     }
 
     fn read_exact_at(&mut self, buf: &mut [u8], offset: u64) -> Result<(), io::Error> {
-        if stable64_size() > 0 {
-            stable64_read(offset + SQLITE_SIZE_IN_BYTES, buf);
+        if stable_size() > 0 {
+            stable_read(offset + SQLITE_SIZE_IN_BYTES, buf);
         }
         Ok(())
     }
@@ -90,9 +90,9 @@ impl sqlite_vfs::DatabaseHandle for Connection {
     fn write_all_at(&mut self, buf: &[u8], offset: u64) -> Result<(), io::Error> {
         let size = offset + buf.len() as u64;
         if size > Self::size() {
-            stable64_write(0, &size.to_be_bytes());
+            stable_write(0, &size.to_be_bytes());
         }
-        stable64_write(offset + SQLITE_SIZE_IN_BYTES, buf);
+        stable_write(offset + SQLITE_SIZE_IN_BYTES, buf);
         Ok(())
     }
 
@@ -102,15 +102,15 @@ impl sqlite_vfs::DatabaseHandle for Connection {
     }
 
     fn set_len(&mut self, size: u64) -> Result<(), io::Error> {
-        let capacity = if stable64_size() == 0 { 0 } else { stable_capacity() - SQLITE_SIZE_IN_BYTES };
+        let capacity = if stable_size() == 0 {
+            0
+        } else {
+            stable_capacity() - SQLITE_SIZE_IN_BYTES
+        };
         if size > capacity {
-            stable_grow_bytes(size - capacity).map_err(|err| {
-                io::Error::new(
-                    ErrorKind::OutOfMemory,
-                    err,
-                )
-            })?;
-            stable64_write(0, &size.to_be_bytes());
+            stable_grow_bytes(size - capacity)
+                .map_err(|err| io::Error::new(ErrorKind::OutOfMemory, err))?;
+            stable_write(0, &size.to_be_bytes());
         }
         Ok(())
     }
@@ -129,17 +129,17 @@ impl sqlite_vfs::DatabaseHandle for Connection {
     }
 
     fn wal_index(&self, _readonly: bool) -> Result<Self::WalIndex, io::Error> {
-        Ok(sqlite_vfs::WalDisabled::default())
+        Ok(sqlite_vfs::WalDisabled)
     }
 }
 
 impl Connection {
     fn size() -> u64 {
-        if stable64_size() == 0 {
+        if stable_size() == 0 {
             return 0;
         }
         let mut buf = [0u8; SQLITE_SIZE_IN_BYTES as usize];
-        stable64_read(0, &mut buf);
+        stable_read(0, &mut buf);
         u64::from_be_bytes(buf)
     }
 
